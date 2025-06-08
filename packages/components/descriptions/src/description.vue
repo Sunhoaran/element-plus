@@ -11,13 +11,23 @@
         <slot name="extra">{{ extra }}</slot>
       </div>
     </div>
-
     <div :class="ns.e('body')">
       <table :class="[ns.e('table'), ns.is('bordered', border)]">
         <tbody>
-          <template v-for="(row, _index) in getRows()" :key="_index">
-            <el-descriptions-row :row="row" />
-          </template>
+          <slot />
+          <rows-renderer
+            :magic-prop="
+              () => {
+                // Since `getRows()` returns vnodes that are not reactive,
+                // the render function cannot capture its own deps.
+                // This workaround forces Vue to update `rows-renderer`.
+              }
+            "
+          >
+            <template v-for="(row, _index) in getRows()" :key="_index">
+              <el-descriptions-row :row="row" />
+            </template>
+          </rows-renderer>
         </tbody>
       </table>
     </div>
@@ -25,31 +35,34 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, provide, useSlots } from 'vue'
-import { flattedChildren } from '@element-plus/utils'
-import { useNamespace } from '@element-plus/hooks'
+import { computed, getCurrentInstance, provide } from 'vue'
+import { useNamespace, useOrderedChildren } from '@element-plus/hooks'
 import { useFormSize } from '@element-plus/components/form'
 import ElDescriptionsRow from './descriptions-row.vue'
 import { descriptionsKey } from './token'
 import { descriptionProps } from './description'
 import { COMPONENT_NAME } from './constants'
 
-import type { IDescriptionsInject } from './descriptions.type'
+import type { DescriptionItemContext } from './type'
 import type { DescriptionItemVNode } from './description-item'
+import type { Slots } from 'vue'
 
 defineOptions({
   name: 'ElDescriptions',
 })
-
 const props = defineProps(descriptionProps)
 
 const ns = useNamespace('descriptions')
-
 const descriptionsSize = useFormSize()
 
-const slots = useSlots()
-
-provide(descriptionsKey, props as IDescriptionsInject)
+const {
+  children: descriptionItems,
+  addChild: addDescriptionItem,
+  removeChild: removeDescriptionItem,
+} = useOrderedChildren<DescriptionItemContext>(
+  getCurrentInstance()!,
+  COMPONENT_NAME
+)
 
 const descriptionKls = computed(() => [ns.b(), ns.m(descriptionsSize.value)])
 
@@ -73,21 +86,19 @@ const filledNode = (
 }
 
 const getRows = () => {
-  if (!slots.default) return []
+  const children = descriptionItems.value
+  if (children.length === 0) return []
 
-  const children = flattedChildren(slots.default()).filter(
-    (node): node is DescriptionItemVNode =>
-      (node as any)?.type?.name === COMPONENT_NAME
-  )
   const rows: DescriptionItemVNode[][] = []
   let temp: DescriptionItemVNode[] = []
   let count = props.column
   let totalSpan = 0 // all spans number of item
   const rowspanTemp: number[] = [] // the number of row spans
 
-  children.forEach((node, index) => {
-    const span = node.props?.span || 1
-    const rowspan = node.props?.rowspan || 1
+  children.forEach((child, index) => {
+    const node = child.vnode
+    const span = child.props?.span || 1
+    const rowspan = child.props?.rowspan || 1
     const rowNo = rows.length
     rowspanTemp[rowNo] ||= 0
 
@@ -127,4 +138,14 @@ const getRows = () => {
 
   return rows
 }
+
+const RowsRenderer = (_: unknown, { slots }: { slots: Slots }) => {
+  return slots.default!()
+}
+
+provide(descriptionsKey, {
+  props,
+  addDescriptionItem,
+  removeDescriptionItem,
+})
 </script>
