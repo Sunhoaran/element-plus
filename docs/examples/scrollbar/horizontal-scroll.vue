@@ -20,7 +20,7 @@
   justify-content: center;
   width: 100px;
   height: 50px;
-  margin: 10px;
+  margin: 110px;
   text-align: center;
   border-radius: 4px;
   background: var(--el-color-danger-light-9);
